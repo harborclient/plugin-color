@@ -1,18 +1,31 @@
 {
   "id": "com.harborclient.plugins.color",
   "name": "Color",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "HarborClient",
   "summary": "Sample colors from anywhere on screen and copy them as HEX, RGB, HSL, HSV, or CMYK.",
   "description": "README.md",
-  "categories": ["utilities", "debugging"],
-  "screenshots": ["screenshot.png"],
+  "categories": [
+    "utilities",
+    "debugging"
+  ],
+  "screenshots": [
+    "screenshot.png"
+  ],
   "engines": {
     "harborclient": ">=2.0.0"
   },
   "renderer": "dist/renderer.js",
-  "permissions": ["ui", "storage"],
+  "permissions": [
+    "ui",
+    "storage"
+  ],
   "contributes": {
-    "footerPanels": [{ "id": "panel", "title": "🎨 Color" }]
+    "footerPanels": [
+      {
+        "id": "panel",
+        "title": "🎨 Color"
+      }
+    ]
   }
 }
