@@ -50,7 +50,10 @@ export interface ColorFormats {
 /**
  * Normalizes a CSS hex string to uppercase `#RRGGBB`.
  *
- * @param hex - Hex color with or without `#`, 3 or 6 digits.
+ * Accepts 3-digit (`#RGB`), 6-digit (`#RRGGBB`), and 8-digit (`#RRGGBBAA`)
+ * forms. Alpha digits are discarded so RGB conversion stays opaque.
+ *
+ * @param hex - Hex color with or without `#`.
  * @returns Normalized six-digit hex, or null when invalid.
  */
 export function normalizeHex(hex: string): string | null {
@@ -65,7 +68,66 @@ export function normalizeHex(hex: string): string | null {
   if (/^[0-9a-fA-F]{6}$/.test(trimmed)) {
     return `#${trimmed.toUpperCase()}`;
   }
+  if (/^[0-9a-fA-F]{8}$/.test(trimmed)) {
+    return `#${trimmed.slice(0, 6).toUpperCase()}`;
+  }
   return null;
+}
+
+/**
+ * Formats an RGB channel triple as an uppercase `#RRGGBB` hex string.
+ *
+ * @param rgb - sRGB channels in 0–255 (values are clamped and rounded).
+ * @returns Six-digit hex string.
+ */
+export function rgbToHex(rgb: RgbColor): string {
+  const toHex = (value: number): string => {
+    const clamped = Math.max(0, Math.min(255, Math.round(value)));
+    return clamped.toString(16).padStart(2, "0");
+  };
+  return `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`.toUpperCase();
+}
+
+/**
+ * Parses a `rgb()` / `rgba()` CSS color string into `#RRGGBB`.
+ *
+ * @param value - Trimmed color string.
+ * @returns Normalized hex, or null when the string is not rgb/rgba.
+ */
+function parseRgbFunction(value: string): string | null {
+  const match =
+    /^rgba?\(\s*([\d.]+)\s*[,\s]\s*([\d.]+)\s*[,\s]\s*([\d.]+)/i.exec(value);
+  if (match == null) {
+    return null;
+  }
+  const r = Number(match[1]);
+  const g = Number(match[2]);
+  const b = Number(match[3]);
+  if (![r, g, b].every((n) => Number.isFinite(n) && n >= 0 && n <= 255)) {
+    return null;
+  }
+  return rgbToHex({ r, g, b });
+}
+
+/**
+ * Sanitizes a value from the EyeDropper API (or any caller) into `#RRGGBB`.
+ *
+ * EyeDropper implementations vary: values may be 6- or 8-digit hex, or an
+ * `rgb()` / `rgba()` string depending on the Chromium/Electron build. This
+ * accepts all of those and discards any alpha channel.
+ *
+ * @param raw - Unknown input, typically `result.sRGBHex`.
+ * @returns Normalized six-digit hex, or null when the value is not a usable color.
+ */
+export function parseEyeDropperHex(raw: unknown): string | null {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  return normalizeHex(trimmed) ?? parseRgbFunction(trimmed);
 }
 
 /**
@@ -265,11 +327,11 @@ export function namedColor(hex: string): string {
 /**
  * Builds all copyable format strings from a sampled hex color.
  *
- * @param hex - Hex color from the eyedropper (`#RGB` / `#RRGGBB`).
+ * @param hex - Hex color from the eyedropper (`#RGB` / `#RRGGBB` / `#RRGGBBAA`).
  * @returns Format bag, or null when hex is invalid.
  */
 export function formatsFromHex(hex: string): ColorFormats | null {
-  const normalized = normalizeHex(hex);
+  const normalized = parseEyeDropperHex(hex);
   if (normalized == null) {
     return null;
   }

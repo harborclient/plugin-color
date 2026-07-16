@@ -3459,7 +3459,40 @@ function normalizeHex(hex) {
   if (/^[0-9a-fA-F]{6}$/.test(trimmed)) {
     return `#${trimmed.toUpperCase()}`;
   }
+  if (/^[0-9a-fA-F]{8}$/.test(trimmed)) {
+    return `#${trimmed.slice(0, 6).toUpperCase()}`;
+  }
   return null;
+}
+function rgbToHex(rgb) {
+  const toHex = (value) => {
+    const clamped = Math.max(0, Math.min(255, Math.round(value)));
+    return clamped.toString(16).padStart(2, "0");
+  };
+  return `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`.toUpperCase();
+}
+function parseRgbFunction(value) {
+  const match = /^rgba?\(\s*([\d.]+)\s*[,\s]\s*([\d.]+)\s*[,\s]\s*([\d.]+)/i.exec(value);
+  if (match == null) {
+    return null;
+  }
+  const r2 = Number(match[1]);
+  const g = Number(match[2]);
+  const b = Number(match[3]);
+  if (![r2, g, b].every((n) => Number.isFinite(n) && n >= 0 && n <= 255)) {
+    return null;
+  }
+  return rgbToHex({ r: r2, g, b });
+}
+function parseEyeDropperHex(raw) {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  return normalizeHex(trimmed) ?? parseRgbFunction(trimmed);
 }
 function hexToRgb(hex) {
   const normalized = normalizeHex(hex);
@@ -3587,7 +3620,7 @@ function namedColor(hex) {
   return CSS_NAMED_COLORS[normalized] ?? "Not named";
 }
 function formatsFromHex(hex) {
-  const normalized = normalizeHex(hex);
+  const normalized = parseEyeDropperHex(hex);
   if (normalized == null) {
     return null;
   }
@@ -3608,7 +3641,14 @@ function formatsFromHex(hex) {
 // src/components/ColorFormatRow.tsx
 function ColorFormatRow({ label, value, onCopy }) {
   return /* @__PURE__ */ jsxs("div", { className: "flex min-w-0 items-center gap-2 rounded-md border border-separator bg-panel px-3 py-2", children: [
-    /* @__PURE__ */ jsx("span", { className: "min-w-0 flex-1 truncate font-mono text-[14px] text-text", title: value, children: value }),
+    /* @__PURE__ */ jsx(
+      "span",
+      {
+        className: "min-w-0 flex-1 truncate font-mono text-[14px] text-text",
+        title: value,
+        children: value
+      }
+    ),
     /* @__PURE__ */ jsx(
       "button",
       {
@@ -3655,6 +3695,9 @@ function ColorPanel({ hc }) {
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState(null);
   const supported = useMemo(() => isEyeDropperSupported(), []);
+  const recentRef = useRef([]);
+  const pickingRef = useRef(false);
+  const abortRef = useRef(null);
   useEffect(() => {
     let active = true;
     void hc.storage.get(RECENT_STORAGE_KEY).then((value) => {
@@ -3662,7 +3705,9 @@ function ColorPanel({ hc }) {
         return;
       }
       if (Array.isArray(value)) {
-        setRecent(value.filter((item) => typeof item === "string"));
+        const clean = value.filter((item) => typeof item === "string");
+        recentRef.current = clean;
+        setRecent(clean);
       }
     }).catch(() => {
       if (active) {
@@ -3673,6 +3718,12 @@ function ColorPanel({ hc }) {
       active = false;
     };
   }, [hc.storage]);
+  useEffect(() => {
+    return () => {
+      pickingRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
   const applyColor = useCallback(
     async (hex, persist) => {
       const next = formatsFromHex(hex);
@@ -3685,8 +3736,9 @@ function ColorPanel({ hc }) {
       setError(null);
       const updated = [
         next.hex,
-        ...recent.filter((item) => item.toUpperCase() !== next.hex)
+        ...recentRef.current.filter((item) => item.toUpperCase() !== next.hex)
       ].slice(0, MAX_RECENT);
+      recentRef.current = updated;
       setRecent(updated);
       if (persist) {
         try {
@@ -3696,33 +3748,54 @@ function ColorPanel({ hc }) {
         }
       }
     },
-    [hc.storage, recent]
+    [hc.storage]
   );
   const handlePick = useCallback(async () => {
     if (!supported) {
       setError("Screen color picking is not supported in this environment.");
       return;
     }
+    if (pickingRef.current) {
+      return;
+    }
+    pickingRef.current = true;
     setPicking(true);
     setError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const EyeDropper = window.EyeDropper;
-      const result = await new EyeDropper().open();
-      await applyColor(result.sRGBHex, true);
+      const result = await new EyeDropper().open({ signal: controller.signal });
+      const hex = parseEyeDropperHex(result?.sRGBHex);
+      if (hex == null) {
+        setError(
+          `Invalid color value from eyedropper: ${String(result?.sRGBHex)}`
+        );
+        return;
+      }
+      await applyColor(hex, true);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         return;
       }
+      if (err instanceof DOMException && err.name === "NotAllowedError") {
+        setError('Click "Pick color" to sample again.');
+        return;
+      }
       setError("Could not sample a color. Try again.");
     } finally {
+      pickingRef.current = false;
+      abortRef.current = null;
       setPicking(false);
     }
   }, [applyColor, supported]);
   const handleCopy = useCallback(
     (label, value) => {
-      void copyToClipboard(hc, value, { toast: `Copied ${label}` }).catch(() => {
-        setError(`Failed to copy ${label}.`);
-      });
+      void copyToClipboard(hc, value, { toast: `Copied ${label}` }).catch(
+        () => {
+          setError(`Failed to copy ${label}.`);
+        }
+      );
     },
     [hc]
   );
@@ -3774,6 +3847,7 @@ function ColorPanel({ hc }) {
     ] }),
     /* @__PURE__ */ jsxs("div", { className: "min-h-0 flex-1 overflow-auto px-3 py-3", children: [
       !supported ? /* @__PURE__ */ jsx("p", { className: "mb-3 text-[14px] text-danger", role: "status", children: "Screen color picking is not available here. The EyeDropper API requires Chromium with screen-access permissions." }) : null,
+      picking ? /* @__PURE__ */ jsx("p", { className: "mb-3 text-[14px] text-muted", role: "status", children: "Click anywhere on screen to sample a color, or press Escape to cancel." }) : null,
       error != null ? /* @__PURE__ */ jsx("p", { className: "mb-3 text-[14px] text-danger", role: "status", children: error }) : null,
       /* @__PURE__ */ jsxs("div", { className: "relative flex gap-3", children: [
         /* @__PURE__ */ jsxs("div", { className: "flex min-w-0 flex-1 flex-col gap-2", children: [
@@ -3865,19 +3939,27 @@ function ColorPanel({ hc }) {
       ] }),
       recent.length > 0 ? /* @__PURE__ */ jsxs("div", { className: "mt-4", children: [
         /* @__PURE__ */ jsx("p", { className: "mb-2 text-[14px] text-muted", children: "Recent" }),
-        /* @__PURE__ */ jsx("div", { className: "flex flex-wrap gap-2", role: "list", "aria-label": "Recent colors", children: recent.map((hex) => /* @__PURE__ */ jsx(
-          "button",
+        /* @__PURE__ */ jsx(
+          "div",
           {
-            type: "button",
-            role: "listitem",
-            className: "h-8 w-8 rounded-md border border-separator focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-            style: { backgroundColor: hex },
-            "aria-label": `Use recent color ${hex}`,
-            title: hex,
-            onClick: () => handleRecentClick(hex)
-          },
-          hex
-        )) })
+            className: "flex flex-wrap gap-2",
+            role: "list",
+            "aria-label": "Recent colors",
+            children: recent.map((hex) => /* @__PURE__ */ jsx(
+              "button",
+              {
+                type: "button",
+                role: "listitem",
+                className: "h-8 w-8 rounded-md border border-separator focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                style: { backgroundColor: hex },
+                "aria-label": `Use recent color ${hex}`,
+                title: hex,
+                onClick: () => handleRecentClick(hex)
+              },
+              hex
+            ))
+          }
+        )
       ] }) : null
     ] })
   ] });

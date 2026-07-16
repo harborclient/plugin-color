@@ -4,10 +4,15 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "@harborclient/sdk/react";
 import type { PluginContext } from "@harborclient/sdk";
-import { formatsFromHex, type ColorFormats } from "../color/convert";
+import {
+  formatsFromHex,
+  parseEyeDropperHex,
+  type ColorFormats,
+} from "../color/convert";
 import { ColorFormatRow } from "./ColorFormatRow";
 
 const RECENT_STORAGE_KEY = "recent";
@@ -22,10 +27,17 @@ interface EyeDropperResult {
 }
 
 /**
+ * Options accepted by `EyeDropper.open`, including an optional abort signal.
+ */
+interface EyeDropperOpenOptions {
+  signal?: AbortSignal;
+}
+
+/**
  * Constructor shape for the Web EyeDropper API.
  */
 interface EyeDropperConstructor {
-  new (): { open(): Promise<EyeDropperResult> };
+  new (): { open(options?: EyeDropperOpenOptions): Promise<EyeDropperResult> };
 }
 
 interface Props {
@@ -56,6 +68,23 @@ export function ColorPanel({ hc }: Props) {
   const supported = useMemo(() => isEyeDropperSupported(), []);
 
   /**
+   * Mirrors `recent` so the async picking loop reads the latest list without
+   * being re-created (and restarted) on every sampled color.
+   */
+  const recentRef = useRef<string[]>([]);
+
+  /**
+   * Tracks whether continuous picking is active, readable inside the loop.
+   */
+  const pickingRef = useRef(false);
+
+  /**
+   * Aborts the in-flight `EyeDropper.open()` when picking is toggled off or the
+   * panel unmounts.
+   */
+  const abortRef = useRef<AbortController | null>(null);
+
+  /**
    * Loads persisted recent swatches when the panel mounts.
    */
   useEffect(() => {
@@ -67,7 +96,9 @@ export function ColorPanel({ hc }: Props) {
           return;
         }
         if (Array.isArray(value)) {
-          setRecent(value.filter((item) => typeof item === "string"));
+          const clean = value.filter((item) => typeof item === "string");
+          recentRef.current = clean;
+          setRecent(clean);
         }
       })
       .catch(() => {
@@ -81,7 +112,21 @@ export function ColorPanel({ hc }: Props) {
   }, [hc.storage]);
 
   /**
+   * Stops continuous picking and aborts any open eyedropper when the panel
+   * unmounts (footer panel closed).
+   */
+  useEffect(() => {
+    return () => {
+      pickingRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  /**
    * Applies a sampled hex color to the panel and prepends it to recent swatches.
+   *
+   * Reads/writes recent colors through `recentRef` so it stays stable across the
+   * continuous picking loop.
    *
    * @param hex - Hex color from the eyedropper or a recent swatch.
    * @param persist - When true, writes the updated recent list to storage.
@@ -99,8 +144,9 @@ export function ColorPanel({ hc }: Props) {
 
       const updated = [
         next.hex,
-        ...recent.filter((item) => item.toUpperCase() !== next.hex),
+        ...recentRef.current.filter((item) => item.toUpperCase() !== next.hex),
       ].slice(0, MAX_RECENT);
+      recentRef.current = updated;
       setRecent(updated);
 
       if (persist) {
@@ -111,32 +157,58 @@ export function ColorPanel({ hc }: Props) {
         }
       }
     },
-    [hc.storage, recent]
+    [hc.storage]
   );
 
   /**
-   * Opens the OS/browser eyedropper cursor and samples a screen pixel.
+   * Opens the eyedropper for a single sample.
+   *
+   * The Web EyeDropper API consumes transient user activation on every
+   * `open()` call, so it must be re-triggered by a fresh click each time —
+   * continuous sampling from one gesture is not possible.
    */
   const handlePick = useCallback(async (): Promise<void> => {
     if (!supported) {
       setError("Screen color picking is not supported in this environment.");
       return;
     }
+    if (pickingRef.current) {
+      return;
+    }
+    pickingRef.current = true;
     setPicking(true);
     setError(null);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const EyeDropper = (
         window as unknown as { EyeDropper: EyeDropperConstructor }
       ).EyeDropper;
-      const result = await new EyeDropper().open();
-      await applyColor(result.sRGBHex, true);
+      const result = await new EyeDropper().open({ signal: controller.signal });
+      const hex = parseEyeDropperHex(result?.sRGBHex);
+      if (hex == null) {
+        setError(
+          `Invalid color value from eyedropper: ${String(result?.sRGBHex)}`
+        );
+        return;
+      }
+      await applyColor(hex, true);
     } catch (err) {
-      // AbortError means the user cancelled the picker — not a failure.
+      // AbortError: user pressed Escape or the panel closed mid-pick.
       if (err instanceof DOMException && err.name === "AbortError") {
+        return;
+      }
+      // NotAllowedError: transient activation expired/consumed — needs a click.
+      if (err instanceof DOMException && err.name === "NotAllowedError") {
+        setError('Click "Pick color" to sample again.');
         return;
       }
       setError("Could not sample a color. Try again.");
     } finally {
+      pickingRef.current = false;
+      abortRef.current = null;
       setPicking(false);
     }
   }, [applyColor, supported]);
@@ -215,6 +287,12 @@ export function ColorPanel({ hc }: Props) {
           <p className="mb-3 text-[14px] text-danger" role="status">
             Screen color picking is not available here. The EyeDropper API
             requires Chromium with screen-access permissions.
+          </p>
+        ) : null}
+        {picking ? (
+          <p className="mb-3 text-[14px] text-muted" role="status">
+            Click anywhere on screen to sample a color, or press Escape to
+            cancel.
           </p>
         ) : null}
         {error != null ? (
