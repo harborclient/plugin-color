@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "pluginId": "com.harborclient.plugins.color",
+  "pluginVersion": "1.0.1",
+  "algorithm": "Ed25519",
+  "files": [
+    {
+      "path": ".gitignore",
+      "sha256": "88ad380decbd9a1a6659c573833c96932dab32e7e0e88fa3353c98f758cd10b3"
+    },
+    {
+      "path": "dist/renderer.js",
+      "sha256": "fdcf30dc38598514aff7ef7e95febd17da7eb8d04a7f35ef83f01c29ed92d982"
+    },
+    {
+      "path": "manifest.json",
+      "sha256": "e65bd2ac21033864a9fa2f3f0e223879c8f1a813afc628db821ae444b1fed69d"
+    },
+    {
+      "path": "package.json",
+      "sha256": "6acbef55497bf48b5557cc3816db58d1d7579a529b4908a4566be552e70a2516"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "2dafbce6b69012db116195d4ba34b0e178484bc4d50e97f9aea0cb5d0d99adb8"
+    },
+    {
+      "path": "README.md",
+      "sha256": "32e41099875c4874d286a422f8f4855767aeb890899cd54782ead2ce6ef94023"
+    },
+    {
+      "path": "screenshot.png",
+      "sha256": "e03c95d5dc73a493c7319d49625df4b70170680b5036eb30c59f5a291cb0ef7a"
+    },
+    {
+      "path": "scripts/build.mjs",
+      "sha256": "f8750832ae0f94fdf1313b95b1b787637b5a98e69b1dcaa007a93cfbe486819e"
+    },
+    {
+      "path": "scripts/publish.sh",
+      "sha256": "8a0a899d425d2d3c67f5560a54a92f080225fa022e70eac920f14c963f825c69"
+    },
+    {
+      "path": "scripts/sign.ts",
+      "sha256": "dc21f6daa2c0d454b53cc719524f41669c1f1a0319b80b50dc1f0b3fa3f796e3"
+    },
+    {
+      "path": "scripts/verify.ts",
+      "sha256": "555f897860b881817f6aa66a933a38fb31388b461b8fa1e9e9b6126b67bc18e0"
+    },
+    {
+      "path": "src/color/convert.test.ts",
+      "sha256": "13f883fba00b172c5e90b42f0e8b7ba165dabd750ce5cf6492ead56d2b8f5055"
+    },
+    {
+      "path": "src/color/convert.ts",
+      "sha256": "b1cbf7df91a8eda472e6db62e9525c68cce64f94969772cd697de0cfcb4b9b1b"
+    },
+    {
+      "path": "src/components/ColorFormatRow.tsx",
+      "sha256": "61a42deb72d36b9a4aeb81a07c6c2f5b63b44b818b4f91affabdcd9dd6291cbd"
+    },
+    {
+      "path": "src/components/ColorPanel.tsx",
+      "sha256": "82921709b33d90cb8c816e64816a674a1f721da3bf39d43b25e72a7cfee8f788"
+    },
+    {
+      "path": "src/renderer.tsx",
+      "sha256": "2ec6b3ef0659bcc27a75e1a258f66708c438140c3716ae1cfa1a8e05b4d937e8"
+    },
+    {
+      "path": "tsconfig.json",
+      "sha256": "663c22f2cb634722bc1c1191c4808b53c89d930979d4936cb6d0a539f4476ac9"
+    },
+    {
+      "path": "vitest.config.ts",
+      "sha256": "aa7858f05b2261348f1502fa076550b0930672e0df3f054a22e8a8d9b68fb32e"
+    }
+  ],
+  "keyId": "com.harborclient.plugins.color",
+  "signature": "NFwWLt25Up5gj8ZXm0lJ5Xna/37auWM39wZ5zTFYp4OU4KBmFPzwoI7LzY5zUsuveTks4OEOqb4C1uEnPO7FDQ=="
+}
