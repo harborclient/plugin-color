@@ -17,11 +17,9 @@ export function activate(hc: PluginContext): void {
     return <ColorPanel hc={hc} />;
   }
 
-  hc.subscriptions.push(
-    hc.ui.registerFooterPanel({
-      id: "panel",
-      title: "🎨 Color",
-      Component: ColorPanelHost,
-    })
-  );
+  hc.ui.registerFooterPanel({
+    id: "panel",
+    title: "🎨 Color",
+    Component: ColorPanelHost,
+  });
 }
